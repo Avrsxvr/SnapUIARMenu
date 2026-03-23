@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import 'react';
+import * as React from 'react';
 
 declare global {
   namespace JSX {
@@ -21,6 +21,29 @@ declare global {
       'a-cursor': any;
       'a-ring': any;
     }
+  }
+}
+
+// Support for A-Frame components on standard entities
+declare module 'react' {
+  interface HTMLAttributes<T> extends React.AriaAttributes, React.DOMAttributes<T> {
+    arjs?: string;
+    'gesture-detector'?: string;
+    'tap-to-place'?: string;
+    'vr-mode-ui'?: string;
+    renderer?: string;
+    embedded?: string | boolean;
+    'gesture-handler'?: string;
+    'drag-handler'?: string;
+    'gltf-model'?: string;
+    rotation?: string;
+    scale?: string;
+    visible?: boolean;
+    geometry?: string;
+    material?: string;
+    animation?: string;
+    cursor?: string;
+    raycaster?: string;
   }
 }
 

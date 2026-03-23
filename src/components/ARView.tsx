@@ -1,8 +1,88 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { DISHES, type Dish } from '../data/dishes';
-import DishMenu from './UI/DishMenu';
+import { type Dish } from '../data/dishes';
+
+// Failsafe mappings to bypass JSX type limitations in some IDE environments
+const AScene = 'a-scene' as any;
+const AAssets = 'a-assets' as any;
+const AAssetItem = 'a-asset-item' as any;
+const AEntity = 'a-entity' as any;
+const ALight = 'a-light' as any;
+
+/**
+ * DishMenu Component - Refactored to be local to ARView file 
+ * to solve all cross-file import/type resolution issues.
+ */
+const DishMenu: React.FC<{ currentDish: any, onDishChange: (d: any) => void, DISHES: any[] }> = ({ currentDish, onDishChange, DISHES }) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const selectedElement = document.getElementById(`dish-${currentDish.id}`);
+    if (selectedElement && scrollRef.current) {
+      const parent = scrollRef.current;
+      const offsetLeft = selectedElement.offsetLeft;
+      const parentWidth = parent.offsetWidth;
+      const itemWidth = selectedElement.offsetWidth;
+      parent.scrollTo({
+        left: offsetLeft - (parentWidth / 2) + (itemWidth / 2),
+        behavior: 'smooth'
+      });
+    }
+  }, [currentDish]);
+
+  const handleScroll = () => {
+    if (!scrollRef.current) return;
+    const parent = scrollRef.current;
+    const parentCenter = parent.scrollLeft + parent.offsetWidth / 2;
+    let closestDish = DISHES[0];
+    let minDistance = Infinity;
+    DISHES.forEach((dish) => {
+      const element = document.getElementById(`dish-${dish.id}`);
+      if (element) {
+        const elementCenter = element.offsetLeft + element.offsetWidth / 2;
+        const distance = Math.abs(parentCenter - elementCenter);
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestDish = dish;
+        }
+      }
+    });
+    if (closestDish.id !== currentDish.id) onDishChange(closestDish);
+  };
+
+  return (
+    <div className="dish-menu-container">
+      <AnimatePresence mode="wait">
+        <motion.div 
+          key={currentDish.id}
+          className="dish-info-card visible"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.3 }}
+        >
+          <h2>{currentDish.name}</h2>
+          <p>4.8 ★ Premium AR View Activated</p>
+        </motion.div>
+      </AnimatePresence>
+      <div className="dish-slider-wrapper" ref={scrollRef} onScroll={handleScroll}>
+        {DISHES.map((dish) => (
+          <motion.div
+            key={dish.id}
+            id={`dish-${dish.id}`}
+            className={`dish-item ${currentDish.id === dish.id ? 'selected' : ''}`}
+            onClick={() => onDishChange(dish)}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 1.4 }}
+          >
+            <img src={dish.iconPath} alt={dish.name} />
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 interface ARViewProps {
   currentDish: Dish;
@@ -13,12 +93,10 @@ const ARView: React.FC<ARViewProps> = ({ currentDish, onDishChange }) => {
   const [isPlaced, setIsPlaced] = useState(false);
   const [placementPosition, setPlacementPosition] = useState("0 0 -2");
   
-  // Refs for tracking state without closures in A-Frame callbacks
   const isPlacedRef = useRef(isPlaced);
   const setIsPlacedRef = useRef(setIsPlaced);
   const setPlacementPositionRef = useRef(setPlacementPosition);
 
-  // Keep refs in sync
   useEffect(() => {
     isPlacedRef.current = isPlaced;
     setIsPlacedRef.current = setIsPlaced;
@@ -28,15 +106,11 @@ const ARView: React.FC<ARViewProps> = ({ currentDish, onDishChange }) => {
   useEffect(() => {
     if (typeof window !== 'undefined' && 'AFRAME' in window) {
       const AFRAME = (window as any).AFRAME;
-
-      // Tap to Place Logic
       if (!AFRAME.components['tap-to-place']) {
         AFRAME.registerComponent('tap-to-place', {
           init: function () {
             this.el.sceneEl.addEventListener('click', (event: any) => {
-              // Ignore if clicking on React UI (all UI is inside .ar-ui-overlay)
               if (event.target.closest('.ar-ui-overlay')) return;
-              
               if (!isPlacedRef.current) {
                 const cursor = document.querySelector('[cursor]');
                 if (cursor) {
@@ -53,15 +127,12 @@ const ARView: React.FC<ARViewProps> = ({ currentDish, onDishChange }) => {
           }
         });
       }
-
-      // Drag to Move Logic
       if (!AFRAME.components['drag-handler']) {
         AFRAME.registerComponent('drag-handler', {
           init: function () {
             this.dragging = false;
             this.el.addEventListener('mousedown', () => { this.dragging = true; });
             window.addEventListener('mouseup', () => { this.dragging = false; });
-            
             const handleMove = () => {
               if (this.dragging && isPlacedRef.current) {
                 const cursor = document.querySelector('[cursor]');
@@ -75,7 +146,6 @@ const ARView: React.FC<ARViewProps> = ({ currentDish, onDishChange }) => {
                 }
               }
             };
-
             this.el.sceneEl.addEventListener('mousemove', handleMove);
             this.el.addEventListener('touchstart', () => { this.dragging = true; });
             window.addEventListener('touchend', () => { this.dragging = false; });
@@ -86,10 +156,15 @@ const ARView: React.FC<ARViewProps> = ({ currentDish, onDishChange }) => {
     }
   }, []);
 
+  // Import for the menu items
+  const menuDishes = useRef<any[]>([]);
+  useEffect(() => {
+    import('../data/dishes').then(m => { menuDishes.current = m.DISHES; });
+  }, []);
+
   return (
     <div className="ar-container">
-      {/* 3D SCENE BACKGROUND */}
-      <a-scene
+      <AScene
         embedded="true"
         arjs="sourceType: webcam; debugUIEnabled: false;"
         vr-mode-ui="enabled: false"
@@ -97,75 +172,59 @@ const ARView: React.FC<ARViewProps> = ({ currentDish, onDishChange }) => {
         renderer="logarithmicDepthBuffer: true; precision: medium; antialias: true;"
         tap-to-place=""
       >
-        <a-assets>
-          <a-asset-item id="dish-model" src={currentDish.modelPath}></a-asset-item>
-        </a-assets>
-
-        <a-entity camera id="camera">
-          <a-entity
+        <AAssets>
+          <AAssetItem id="dish-model" src={currentDish.modelPath}></AAssetItem>
+        </AAssets>
+        <AEntity camera id="camera">
+          <AEntity
             cursor="fuse: false; rayOrigin: mouse;"
             position="0 0 -1"
             raycaster="objects: .raycastable, .draggable"
-          ></a-entity>
-        </a-entity>
-
-        <a-light type="ambient" color="#BBB"></a-light>
-        <a-light type="directional" color="#FFF" intensity="0.8" position="-0.5 1 1"></a-light>
-
-        <a-entity
+          ></AEntity>
+        </AEntity>
+        <ALight type="ambient" color="#BBB"></ALight>
+        <ALight type="directional" color="#FFF" intensity="0.8" position="-0.5 1 1"></ALight>
+        <AEntity
           id="ground"
           className="raycastable"
           geometry="primitive: plane; width: 100; height: 100"
           rotation="-90 0 0"
           position="0 -1.6 0"
           material="opacity: 0; transparent: true"
-        ></a-entity>
-
-        <a-entity
+        ></AEntity>
+        <AEntity
           id="placed-dish"
           className="draggable"
           position={placementPosition}
           visible={isPlaced}
           scale="0.5 0.5 0.5"
           gesture-handler="minScale: 0.1; maxScale: 5"
-          drag-handler
+          drag-handler=""
         >
-          <a-entity
-            gltf-model="#dish-model"
-            key={currentDish.id}
-          >
-            {/* Holographic base for stability visual */}
-            <a-entity 
+          <AEntity gltf-model="#dish-model" key={currentDish.id}>
+            <AEntity 
               geometry="primitive: cylinder; radius: 0.3; height: 0.05" 
               material="color: #444; opacity: 0.3; wireframe: true"
               visible={!isPlaced} 
-            ></a-entity>
-          </a-entity>
-        </a-entity>
-
+            ></AEntity>
+          </AEntity>
+        </AEntity>
         {!isPlaced && (
-          <a-entity
+          <AEntity
             id="reticle"
             geometry="primitive: ring; radiusInner: 0.1; radiusOuter: 0.15"
             material="color: #fffc00; shader: flat"
             rotation="-90 0 0"
             position="0 -1.59 -2"
             animation="property: scale; to: 1.1 1.1 1.1; dir: alternate; dur: 1000; loop: true"
-          ></a-entity>
+          ></AEntity>
         )}
-      </a-scene>
+      </AScene>
 
-      {/* REACT OVERLAY (UI) - ENSURE IT IS INSIDE THE AR CONTAINER */}
       <div className="ar-ui-overlay">
-        
-        {/* TOP PANEL */}
         <div className="top-nav">
           <div className="brand">
-            <motion.h1 
-              key={currentDish.name}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-            >
+            <motion.h1 key={currentDish.name} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
               {currentDish.name}
             </motion.h1>
             <span>SNAP UI • AR MENU</span>
@@ -176,7 +235,6 @@ const ARView: React.FC<ARViewProps> = ({ currentDish, onDishChange }) => {
           </div>
         </div>
 
-        {/* SCANNING CUES */}
         {!isPlaced && (
           <div className="scanning-overlay">
             <div className="scanning-ring">
@@ -189,13 +247,12 @@ const ARView: React.FC<ARViewProps> = ({ currentDish, onDishChange }) => {
           </div>
         )}
 
-        {/* LENS MENU (MOVED INSIDE FOR PERSISTENCE) */}
         <DishMenu 
           currentDish={currentDish} 
           onDishChange={onDishChange} 
+          DISHES={menuDishes.current.length > 0 ? menuDishes.current : [currentDish]}
         />
 
-        {/* INTERACTION HINT */}
         {isPlaced && (
           <div className="interaction-hint">
             <span>👆 DRAG TO MOVE</span>
@@ -203,11 +260,7 @@ const ARView: React.FC<ARViewProps> = ({ currentDish, onDishChange }) => {
             <span>🤏 PINCH TO SCALE</span>
           </div>
         )}
-
-        {/* CAPTURE BUTTON (VISUAL) */}
-        <div className="capture-overlay">
-          <div className="capture-ring"></div>
-        </div>
+        <div className="capture-overlay"><div className="capture-ring"></div></div>
       </div>
     </div>
   );
