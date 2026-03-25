@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import * as FramerMotion from 'framer-motion';
 import { type Dish } from '../data/dishes';
 
-// Failsafe mappings to bypass JSX type limitations in some IDE environments
+const { motion, AnimatePresence } = FramerMotion;
+
+// Failsafe mappings to bypass JSX type limitations
 const AScene = 'a-scene' as any;
 const AAssets = 'a-assets' as any;
 const AAssetItem = 'a-asset-item' as any;
@@ -11,8 +13,7 @@ const AEntity = 'a-entity' as any;
 const ALight = 'a-light' as any;
 
 /**
- * DishMenu Component - Refactored to be local to ARView file 
- * to solve all cross-file import/type resolution issues.
+ * DishMenu Component - Refactored for absolute build stability
  */
 const DishMenu: React.FC<{ currentDish: any, onDishChange: (d: any) => void, DISHES: any[] }> = ({ currentDish, onDishChange, DISHES }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -63,7 +64,7 @@ const DishMenu: React.FC<{ currentDish: any, onDishChange: (d: any) => void, DIS
           transition={{ duration: 0.3 }}
         >
           <h2>{currentDish.name}</h2>
-          <p>4.8 ★ Premium AR View Activated</p>
+          <p>4.8 ★ Real-World Plane Detection Active</p>
         </motion.div>
       </AnimatePresence>
       <div className="dish-slider-wrapper" ref={scrollRef} onScroll={handleScroll}>
@@ -106,19 +107,20 @@ const ARView: React.FC<ARViewProps> = ({ currentDish, onDishChange }) => {
   useEffect(() => {
     if (typeof window !== 'undefined' && 'AFRAME' in window) {
       const AFRAME = (window as any).AFRAME;
-      if (!AFRAME.components['tap-to-place']) {
-        AFRAME.registerComponent('tap-to-place', {
+
+      // Tap-to-Place using real hit-test point
+      if (!AFRAME.components['hit-place']) {
+        AFRAME.registerComponent('hit-place', {
           init: function () {
-            this.el.sceneEl.addEventListener('click', (event: any) => {
+            this.el.addEventListener('click', (event: any) => {
               if (event.target.closest('.ar-ui-overlay')) return;
+              
               if (!isPlacedRef.current) {
-                const cursor = document.querySelector('[cursor]');
-                if (cursor) {
-                  const raycaster = (cursor as any).components.raycaster;
-                  const intersection = raycaster.getIntersection(document.querySelector('#ground'));
-                  if (intersection) {
-                    const { x, y, z } = intersection.point;
-                    setPlacementPositionRef.current(`${x} ${y} ${z}`);
+                const reticle = document.querySelector('#reticle');
+                if (reticle) {
+                  const position = (reticle as any).getAttribute('position');
+                  if (position) {
+                    setPlacementPositionRef.current(`${position.x} ${position.y} ${position.z}`);
                     setIsPlacedRef.current(true);
                   }
                 }
@@ -127,36 +129,9 @@ const ARView: React.FC<ARViewProps> = ({ currentDish, onDishChange }) => {
           }
         });
       }
-      if (!AFRAME.components['drag-handler']) {
-        AFRAME.registerComponent('drag-handler', {
-          init: function () {
-            this.dragging = false;
-            this.el.addEventListener('mousedown', () => { this.dragging = true; });
-            window.addEventListener('mouseup', () => { this.dragging = false; });
-            const handleMove = () => {
-              if (this.dragging && isPlacedRef.current) {
-                const cursor = document.querySelector('[cursor]');
-                if (cursor) {
-                  const raycaster = (cursor as any).components.raycaster;
-                  const intersection = raycaster.getIntersection(document.querySelector('#ground'));
-                  if (intersection) {
-                    const { x, y, z } = intersection.point;
-                    setPlacementPositionRef.current(`${x} ${y} ${z}`);
-                  }
-                }
-              }
-            };
-            this.el.sceneEl.addEventListener('mousemove', handleMove);
-            this.el.addEventListener('touchstart', () => { this.dragging = true; });
-            window.addEventListener('touchend', () => { this.dragging = false; });
-            this.el.sceneEl.addEventListener('touchmove', handleMove);
-          }
-        });
-      }
     }
   }, []);
 
-  // Import for the menu items
   const menuDishes = useRef<any[]>([]);
   useEffect(() => {
     import('../data/dishes').then(m => { menuDishes.current = m.DISHES; });
@@ -166,59 +141,68 @@ const ARView: React.FC<ARViewProps> = ({ currentDish, onDishChange }) => {
     <div className="ar-container">
       <AScene
         embedded="true"
-        arjs="sourceType: webcam; debugUIEnabled: false;"
+        arjs="sourceType: webcam; debugUIEnabled: false; trackingMethod: best;"
         vr-mode-ui="enabled: false"
         gesture-detector=""
-        renderer="logarithmicDepthBuffer: true; precision: medium; antialias: true;"
-        tap-to-place=""
+        renderer="logarithmicDepthBuffer: true; precision: medium; antialias: true; alpha: true;"
+        ar-hit-test="target: #reticle; fraction: 0.1;"
+        hit-place=""
       >
         <AAssets>
           <AAssetItem id="dish-model" src={currentDish.modelPath}></AAssetItem>
         </AAssets>
-        <AEntity camera id="camera">
+
+        <AEntity camera id="camera" position="0 1.6 0">
           <AEntity
             cursor="fuse: false; rayOrigin: mouse;"
             position="0 0 -1"
             raycaster="objects: .raycastable, .draggable"
           ></AEntity>
         </AEntity>
+
         <ALight type="ambient" color="#BBB"></ALight>
         <ALight type="directional" color="#FFF" intensity="0.8" position="-0.5 1 1"></ALight>
+
+        {/* 
+            RETICLE (Surface Detection Guide)
+            Moved automatically by the ar-hit-test component 
+        */}
         <AEntity
-          id="ground"
-          className="raycastable"
-          geometry="primitive: plane; width: 100; height: 100"
+          id="reticle"
+          geometry="primitive: ring; radiusInner: 0.12; radiusOuter: 0.2"
+          material="color: #fffc00; shader: flat; opacity: 0.8"
           rotation="-90 0 0"
-          position="0 -1.6 0"
-          material="opacity: 0; transparent: true"
-        ></AEntity>
+          visible={!isPlaced}
+        >
+          <AEntity
+            geometry="primitive: circle; radius: 0.03"
+            material="color: #fffc00; shader: flat"
+          ></AEntity>
+        </AEntity>
+
+        {/* PLACED MODEL */}
         <AEntity
           id="placed-dish"
           className="draggable"
           position={placementPosition}
           visible={isPlaced}
-          scale="0.5 0.5 0.5"
-          gesture-handler="minScale: 0.1; maxScale: 5"
+          scale="0.8 0.8 0.8"
+          gesture-handler="minScale: 0.2; maxScale: 10"
           drag-handler=""
         >
-          <AEntity gltf-model="#dish-model" key={currentDish.id}>
+          <AEntity
+            gltf-model="#dish-model"
+            key={currentDish.id}
+          >
+            {/* Soft Shadow Base */}
             <AEntity 
-              geometry="primitive: cylinder; radius: 0.3; height: 0.05" 
-              material="color: #444; opacity: 0.3; wireframe: true"
-              visible={!isPlaced} 
+              geometry="primitive: cylinder; radius: 0.4; height: 0.01" 
+              material="color: #000; opacity: 0.2"
+              position="0 -0.01 0"
             ></AEntity>
           </AEntity>
         </AEntity>
-        {!isPlaced && (
-          <AEntity
-            id="reticle"
-            geometry="primitive: ring; radiusInner: 0.1; radiusOuter: 0.15"
-            material="color: #fffc00; shader: flat"
-            rotation="-90 0 0"
-            position="0 -1.59 -2"
-            animation="property: scale; to: 1.1 1.1 1.1; dir: alternate; dur: 1000; loop: true"
-          ></AEntity>
-        )}
+
       </AScene>
 
       <div className="ar-ui-overlay">
@@ -241,8 +225,8 @@ const ARView: React.FC<ARViewProps> = ({ currentDish, onDishChange }) => {
               <div className="crosshair"></div>
             </div>
             <div className="scan-text-wrapper">
-              <div className="scan-text">SCANNING SURFACE...</div>
-              <p>TAP TO PLACE YOUR MEAL</p>
+              <div className="scan-text">SEARCHING SURFACE...</div>
+              <p>MOVE CAMERA AROUND THE TABLE</p>
             </div>
           </div>
         )}

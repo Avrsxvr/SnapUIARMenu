@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@vitejs/plugin-basic-ssl": "^2.2.0",
     "aframe": "^1.7.1",
     "framer-motion": "^12.38.0",
     "lucide-react": "^0.577.0",
